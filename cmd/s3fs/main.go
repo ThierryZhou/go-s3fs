@@ -18,9 +18,7 @@ import (
 	"time"
 
 	"github.com/ThierryZhou/go-s3fuse/fs"
-	_ "github.com/ThierryZhou/go-s3fuse/fs"
 	"github.com/ThierryZhou/go-s3fuse/fuse"
-	_ "github.com/ThierryZhou/go-s3fuse/v2/fuse"
 )
 
 // Release decreases the open count. The kernel doesn't wait with

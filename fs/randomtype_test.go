@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 type randomTypeTest struct {

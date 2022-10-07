@@ -171,7 +171,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 // InodeEmbedder is an interface for structs that embed Inode.

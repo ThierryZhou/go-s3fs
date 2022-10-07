@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/ThierryZhou/go-s3fuse/fs"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 // numberNode is a filesystem node representing an integer. Prime

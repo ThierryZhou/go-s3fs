@@ -7,7 +7,7 @@ package fs
 import (
 	"syscall"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 // OK is the Errno return value to indicate absense of errors.

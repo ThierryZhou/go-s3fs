@@ -16,9 +16,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse/nodefs"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse/nodefs"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 // tRoot implements simple root node which Lookups children in predefined .nodes.

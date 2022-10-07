@@ -1,4 +1,4 @@
-// Copyright 2016 the Go-FUSE Authors. All rights reserved.
+// Copyright 2022 the Go-S3FUSE Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse/nodefs"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse/pathfs"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse/nodefs"
+	"github.com/ThierryZhou/go-s3fuse/fuse/pathfs"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 type MutableDataFile struct {

@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/ThierryZhou/go-s3fuse/fs"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 func setupFs(node fs.InodeEmbedder, N int) (string, func()) {

@@ -11,7 +11,7 @@ import (
 	"os"
 
 	"github.com/ThierryZhou/go-s3fuse/fs"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 // ExampleMount shows how to create a loopback file system, and

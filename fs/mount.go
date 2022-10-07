@@ -7,7 +7,7 @@ package fs
 import (
 	"time"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 // Mount mounts the given NodeFS on the directory, and starts serving

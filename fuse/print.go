@@ -1,4 +1,4 @@
-// Copyright 2016 the Go-FUSE Authors. All rights reserved.
+// Copyright 2022 the Go-S3FUSE Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -209,7 +209,7 @@ func (o *AttrOut) string() string {
 
 // ft converts (seconds , nanoseconds) -> float(seconds)
 func ft(tsec uint64, tnsec uint32) float64 {
-	return float64(tsec) + float64(tnsec)*1E-9
+	return float64(tsec) + float64(tnsec)*1e-9
 }
 
 // Returned by LOOKUP

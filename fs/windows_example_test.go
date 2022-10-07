@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ThierryZhou/go-s3fuse/fs"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 // WindowsNode emulates Windows FS semantics, which forbids deleting open files.

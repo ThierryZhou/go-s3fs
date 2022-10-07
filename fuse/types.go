@@ -1,4 +1,4 @@
-// Copyright 2016 the Go-FUSE Authors. All rights reserved.
+// Copyright 2022 the Go-S3FUSE Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -509,7 +509,7 @@ const (
 	NOTIFY_RETRIEVE_CACHE = -5 // retrieve data from kernel cache of an inode
 	NOTIFY_DELETE         = -6 // notify kernel that a directory entry has been deleted
 
-//	NOTIFY_CODE_MAX     = -6
+// NOTIFY_CODE_MAX     = -6
 )
 
 type FlushIn struct {

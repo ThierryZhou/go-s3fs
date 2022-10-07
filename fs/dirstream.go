@@ -7,7 +7,7 @@ package fs
 import (
 	"syscall"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
 )
 
 type dirArray struct {

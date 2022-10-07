@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ThierryZhou/go-s3fuse/fs"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 func TestWindowsEmulations(t *testing.T) {

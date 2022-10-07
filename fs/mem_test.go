@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 func testMount(t *testing.T, root InodeEmbedder, opts *Options) (string, *fuse.Server, func()) {

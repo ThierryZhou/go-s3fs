@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse/nodefs"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fuse/fuse/nodefs"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 func TestFlockExclusive(t *testing.T) {

@@ -1,4 +1,4 @@
-// Copyright 2016 the Go-FUSE Authors. All rights reserved.
+// Copyright 2022 the Go-S3FUSE Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -16,8 +16,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/ThierryZhou/go-s3fuse/v2/fuse"
-	"github.com/ThierryZhou/go-s3fuse/v2/internal/testutil"
+	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fuse/internal/testutil"
 )
 
 var enableOverlayfsTest bool
