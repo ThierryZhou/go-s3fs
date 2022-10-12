@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ThierryZhou/go-s3fuse/fs"
-	"github.com/ThierryZhou/go-s3fuse/fuse"
+	"github.com/ThierryZhou/go-s3fs/fs"
+	"github.com/ThierryZhou/go-s3fs/fuse"
 )
 
 const fileSize = 2 << 60

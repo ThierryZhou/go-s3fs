@@ -1,0 +1,308 @@
+// Package cmd implements the s3fs command
+//
+// It is in a sub package so it's internals can be re-used elsewhere
+package cmd
+
+// FIXME only attach the remote flags when using a remote???
+// would probably mean bringing all the flags in to here? Or define some flagsets in fs...
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"runtime"
+	"runtime/pprof"
+	"strconv"
+	"strings"
+
+	"github.com/ThierryZhou/go-s3fs/fs"
+	"github.com/ThierryZhou/go-s3fs/fs/config/flags"
+	"github.com/ThierryZhou/go-s3fs/fs/filter"
+	"github.com/ThierryZhou/go-s3fs/fs/fspath"
+	"github.com/ThierryZhou/go-s3fs/lib/buildinfo"
+	"github.com/golang/glog"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// Globals
+var (
+	// Flags
+	version bool
+	// Errors
+	errorCommandNotFound    = errors.New("command not found")
+	errorUncategorized      = errors.New("uncategorized error")
+	errorNotEnoughArguments = errors.New("not enough arguments")
+	errorTooManyArguments   = errors.New("too many arguments")
+)
+
+// ShowVersion prints the version to stdout
+func ShowVersion() {
+	osVersion, osKernel := buildinfo.GetOSVersion()
+	if osVersion == "" {
+		osVersion = "unknown"
+	}
+	if osKernel == "" {
+		osKernel = "unknown"
+	}
+
+	linking, tagString := buildinfo.GetLinkingAndTags()
+
+	fmt.Printf("- os/version: %s\n", osVersion)
+	fmt.Printf("- os/kernel: %s\n", osKernel)
+	fmt.Printf("- os/type: %s\n", runtime.GOOS)
+	fmt.Printf("- os/arch: %s\n", runtime.GOARCH)
+	fmt.Printf("- go/version: %s\n", runtime.Version())
+	fmt.Printf("- go/linking: %s\n", linking)
+	fmt.Printf("- go/tags: %s\n", tagString)
+}
+
+// NewFsFile creates an Fs from a name but may point to a file.
+//
+// It returns a string with the file name if points to a file
+// otherwise "".
+func NewFsFile(remote string) (fs.Fs, string) {
+	// _, fsPath, err := fspath.SplitFs(remote)
+	// if err != nil {
+	// 	err = fs.CountError(err)
+	// 	log.Fatalf("Failed to create file system for %q: %v", remote, err)
+	// }
+	// f, err := cache.Get(context.Background(), remote)
+	// switch err {
+	// case fs.ErrorIsFile:
+	// 	cache.Pin(f) // pin indefinitely since it was on the CLI
+	// 	return f, path.Base(fsPath)
+	// case nil:
+	// 	cache.Pin(f) // pin indefinitely since it was on the CLI
+	// 	return f, ""
+	// default:
+	// 	err = fs.CountError(err)
+	// 	log.Fatalf("Failed to create file system for %q: %v", remote, err)
+	// }
+	return nil, ""
+}
+
+// newFsFileAddFilter creates an src Fs from a name
+//
+// This works the same as NewFsFile however it adds filters to the Fs
+// to limit it to a single file if the remote pointed to a file.
+func newFsFileAddFilter(remote string) (fs.Fs, string) {
+	fi := filter.GetConfig(context.Background())
+	f, fileName := NewFsFile(remote)
+	if fileName != "" {
+		if !fi.InActive() {
+			err := fmt.Errorf("can't limit to single files when using filters: %v", remote)
+			err = fs.CountError(err)
+			log.Fatalf(err.Error())
+		}
+		// Limit transfers to this file
+		err := fi.AddFile(fileName)
+		if err != nil {
+			err = fs.CountError(err)
+			log.Fatalf("Failed to limit to single file %q: %v", remote, err)
+		}
+	}
+	return f, fileName
+}
+
+// NewFsSrc creates a new src fs from the arguments.
+//
+// The source can be a file or a directory - if a file then it will
+// limit the Fs to a single file.
+func NewFsSrc(args []string) fs.Fs {
+	fsrc, _ := newFsFileAddFilter(args[0])
+	return fsrc
+}
+
+// newFsDir creates an Fs from a name
+//
+// This must point to a directory
+func newFsDir(remote string) fs.Fs {
+	return nil
+}
+
+// NewFsDir creates a new Fs from the arguments
+//
+// The argument must point a directory
+func NewFsDir(args []string) fs.Fs {
+	fdst := newFsDir(args[0])
+	return fdst
+}
+
+// NewFsSrcDst creates a new src and dst fs from the arguments
+func NewFsSrcDst(args []string) (fs.Fs, fs.Fs) {
+	fsrc, _ := newFsFileAddFilter(args[0])
+	fdst := newFsDir(args[1])
+	return fsrc, fdst
+}
+
+// NewFsSrcFileDst creates a new src and dst fs from the arguments
+//
+// The source may be a file, in which case the source Fs and file name is returned
+func NewFsSrcFileDst(args []string) (fsrc fs.Fs, srcFileName string, fdst fs.Fs) {
+	fsrc, srcFileName = NewFsFile(args[0])
+	fdst = newFsDir(args[1])
+	return fsrc, srcFileName, fdst
+}
+
+// NewFsSrcDstFiles creates a new src and dst fs from the arguments
+// If src is a file then srcFileName and dstFileName will be non-empty
+func NewFsSrcDstFiles(args []string) (fsrc fs.Fs, srcFileName string, fdst fs.Fs, dstFileName string) {
+	fsrc, srcFileName = newFsFileAddFilter(args[0])
+	// If copying a file...
+	dstRemote := args[1]
+	// If file exists then srcFileName != "", however if the file
+	// doesn't exist then we assume it is a directory...
+	if srcFileName != "" {
+		var err error
+		dstRemote, dstFileName, err = fspath.Split(dstRemote)
+		if err != nil {
+			log.Fatalf("Parsing %q failed: %v", args[1], err)
+		}
+		if dstRemote == "" {
+			dstRemote = "."
+		}
+		if dstFileName == "" {
+			log.Fatalf("%q is a directory", args[1])
+		}
+	}
+	// fdst, err := cache.Get(context.Background(), dstRemote)
+	// switch err {
+	// case fs.ErrorIsFile:
+	// 	_ = fs.CountError(err)
+	// 	log.Fatalf("Source doesn't exist or is a directory and destination is a file")
+	// case nil:
+	// default:
+	// 	_ = fs.CountError(err)
+	// 	log.Fatalf("Failed to create file system for destination %q: %v", dstRemote, err)
+	// }
+	// cache.Pin(fdst) // pin indefinitely since it was on the CLI
+	return
+}
+
+// NewFsDstFile creates a new dst fs with a destination file name from the arguments
+func NewFsDstFile(args []string) (fdst fs.Fs, dstFileName string) {
+	dstRemote, dstFileName, err := fspath.Split(args[0])
+	if err != nil {
+		log.Fatalf("Parsing %q failed: %v", args[0], err)
+	}
+	if dstRemote == "" {
+		dstRemote = "."
+	}
+	if dstFileName == "" {
+		log.Fatalf("%q is a directory", args[0])
+	}
+	fdst = newFsDir(dstRemote)
+	return
+}
+
+// ShowStats returns true if the user added a `--stats` flag to the command line.
+//
+// This is called by Run to override the default value of the
+// showStats passed in.
+func ShowStats() bool {
+	statsIntervalFlag := pflag.Lookup("stats")
+	return statsIntervalFlag != nil && statsIntervalFlag.Changed
+}
+
+// Run the function with stats and retries if required
+func Run(Retry bool, showStats bool, cmd *cobra.Command, f func() error) {
+	ci := fs.GetConfig(context.Background())
+	fs.Debugf(nil, "%d go routines active\n", runtime.NumGoroutine())
+
+	// dump all running go-routines
+	if ci.Dump&fs.DumpGoRoutines != 0 {
+		err := pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+		if err != nil {
+			fs.Errorf(nil, "Failed to dump goroutines: %v", err)
+		}
+	}
+
+	// dump open files
+	if ci.Dump&fs.DumpOpenFiles != 0 {
+		c := exec.Command("lsof", "-p", strconv.Itoa(os.Getpid()))
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		err := c.Run()
+		if err != nil {
+			fs.Errorf(nil, "Failed to list open files: %v", err)
+		}
+	}
+}
+
+// CheckArgs checks there are enough arguments and prints a message if not
+func CheckArgs(MinArgs, MaxArgs int, cmd *cobra.Command, args []string) {
+	if len(args) < MinArgs {
+		_ = cmd.Usage()
+		_, _ = fmt.Fprintf(os.Stderr, "Command %s needs %d arguments minimum: you provided %d non flag arguments: %q\n", cmd.Name(), MinArgs, len(args), args)
+	} else if len(args) > MaxArgs {
+		_ = cmd.Usage()
+		_, _ = fmt.Fprintf(os.Stderr, "Command %s needs %d arguments maximum: you provided %d non flag arguments: %q\n", cmd.Name(), MaxArgs, len(args), args)
+	}
+}
+
+// initConfig is run by cobra after initialising the flags
+func initConfig() {
+	// Write the args for debug purposes
+	glog.V(2).Infof("s3fs", "starting with parameters %q", os.Args)
+}
+
+var backendFlags map[string]struct{}
+
+// AddBackendFlags creates flags for all the backend options
+func AddBackendFlags() {
+	backendFlags = map[string]struct{}{}
+	for _, fsInfo := range fs.Registry {
+		done := map[string]struct{}{}
+		for i := range fsInfo.Options {
+			opt := &fsInfo.Options[i]
+			// Skip if done already (e.g. with Provider options)
+			if _, doneAlready := done[opt.Name]; doneAlready {
+				continue
+			}
+			done[opt.Name] = struct{}{}
+			// Make a flag from each option
+			name := opt.FlagName(fsInfo.Prefix)
+			found := pflag.CommandLine.Lookup(name) != nil
+			if !found {
+				// Take first line of help only
+				help := strings.TrimSpace(opt.Help)
+				if nl := strings.IndexRune(help, '\n'); nl >= 0 {
+					help = help[:nl]
+				}
+				help = strings.TrimRight(strings.TrimSpace(help), ".!?")
+				if opt.IsPassword {
+					help += " (obscured)"
+				}
+				flag := pflag.CommandLine.VarPF(opt, name, opt.ShortOpt, help)
+				flags.SetDefaultFromEnv(pflag.CommandLine, name)
+				if _, isBool := opt.Default.(bool); isBool {
+					flag.NoOptDefVal = "true"
+				}
+				// Hide on the command line if requested
+				if opt.Hide&fs.OptionHideCommandLine != 0 {
+					flag.Hidden = true
+				}
+				backendFlags[name] = struct{}{}
+			} else {
+				fs.Errorf(nil, "Not adding duplicate flag --%s", name)
+			}
+			//flag.Hidden = true
+		}
+	}
+}
+
+// Main runs s3fs interpreting flags and commands out of os.Args
+func Main() {
+	AddBackendFlags()
+	if err := Root.Execute(); err != nil {
+		if strings.HasPrefix(err.Error(), "unknown command") && selfupdateEnabled {
+			Root.PrintErrf("You could use '%s selfupdate' to get latest features.\n\n", Root.CommandPath())
+		}
+		log.Fatalf("Fatal error: %v", err)
+	}
+}

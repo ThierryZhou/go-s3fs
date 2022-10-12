@@ -1,4 +1,4 @@
-# GO-S3FUSE
+# go-s3fs
 
 Go native bindings for the S3 FUSE module.
 
@@ -28,6 +28,8 @@ Further highlights of this library is
 
 ## Credits
 
+* Inspired by hanwen's package https://github.com/hanwen/go-fuse
+
 * Inspired by Taru Karttunen's package, https://bitbucket.org/taruti/go-extra.
 
 * Originally based on Ivan Krasin's https://github.com/krasin/go-fuse-zip
@@ -35,7 +37,7 @@ Further highlights of this library is
 ## Bugs
 
 Yes, probably.  Report them through
-https://github.com/ThierryZhou/go-s3fuse/issues
+https://github.com/ThierryZhou/go-s3fs/issues
 
 ## Disclaimer
 
@@ -66,8 +68,8 @@ output. Here is how to read it:
 - `Xb` means `X bytes`.
 
 Every line is prefixed with either `rx <unique>` or `tx <unique>` to denote
-whether it was for kernel request, which Go-S3FUSE received, or reply, which
-Go-S3FUSE sent back to kernel.
+whether it was for kernel request, which go-s3fs received, or reply, which
+go-s3fs sent back to kernel.
 
 Example debug log output:
 
