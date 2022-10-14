@@ -3,5 +3,5 @@ package all
 
 import (
 	// Active commands
-	_ "github.com/ThierryZhou/go-s3fs/mount"
+	_ "github.com/ThierryZhou/go-s3fs/cmd/mount"
 )

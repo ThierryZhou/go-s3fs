@@ -35,7 +35,6 @@ import (
 	"github.com/ThierryZhou/go-s3fs/fs"
 	"github.com/ThierryZhou/go-s3fs/fs/cache"
 	"github.com/ThierryZhou/go-s3fs/fs/log"
-	"github.com/ThierryZhou/go-s3fs/fs/rc"
 	"github.com/ThierryZhou/go-s3fs/fs/walk"
 	"github.com/ThierryZhou/go-s3fs/vfs/vfscache"
 	"github.com/ThierryZhou/go-s3fs/vfs/vfscommon"
@@ -237,31 +236,31 @@ func New(f fs.Fs, opt *vfscommon.Options) *VFS {
 	return vfs
 }
 
-// Stats returns info about the VFS
-func (vfs *VFS) Stats() (out rc.Params) {
-	out = make(rc.Params)
-	out["fs"] = fs.ConfigString(vfs.f)
-	out["opt"] = vfs.Opt
-	out["inUse"] = atomic.LoadInt32(&vfs.inUse)
+// // Stats returns info about the VFS
+// func (vfs *VFS) Stats() (out rc.Params) {
+// 	out = make(rc.Params)
+// 	out["fs"] = fs.ConfigString(vfs.f)
+// 	out["opt"] = vfs.Opt
+// 	out["inUse"] = atomic.LoadInt32(&vfs.inUse)
 
-	var (
-		dirs  int
-		files int
-	)
-	vfs.root.walk(func(d *Dir) {
-		dirs++
-		files += len(d.items)
-	})
-	inf := make(rc.Params)
-	out["metadataCache"] = inf
-	inf["dirs"] = dirs
-	inf["files"] = files
+// 	var (
+// 		dirs  int
+// 		files int
+// 	)
+// 	vfs.root.walk(func(d *Dir) {
+// 		dirs++
+// 		files += len(d.items)
+// 	})
+// 	inf := make(rc.Params)
+// 	out["metadataCache"] = inf
+// 	inf["dirs"] = dirs
+// 	inf["files"] = files
 
-	if vfs.cache != nil {
-		out["diskCache"] = vfs.cache.Stats()
-	}
-	return out
-}
+// 	if vfs.cache != nil {
+// 		out["diskCache"] = vfs.cache.Stats()
+// 	}
+// 	return out
+// }
 
 // Return the number of active cache entries and a VFS if any are in
 // the cache.

@@ -1,107 +1,143 @@
-// FUSE main Fs
+// Copyright 2022 the go-s3fs Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
-//go:build linux || freebsd
-// +build linux freebsd
-
-package s3fs
+package s3
 
 import (
+	"archive/zip"
 	"context"
+	"io/ioutil"
+	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 
-	"bazil.org/fuse"
-	fusefs "bazil.org/fuse/fs"
 	"github.com/ThierryZhou/go-s3fs/fs"
-	"github.com/ThierryZhou/go-s3fs/fs/fserrors"
-	"github.com/ThierryZhou/go-s3fs/fs/log"
-	"github.com/rclone/rclone/cmd/mountlib"
-	"github.com/rclone/rclone/vfs"
+	"github.com/ThierryZhou/go-s3fs/fuse"
 )
 
-// FS represents the top level filing system
-type FS struct {
-	*vfs.VFS
-	f      fs.Fs
-	opt    *mountlib.Options
-	server *fusefs.Server
+type s3Root struct {
+	fs.Inode
+
+	s3cli s3Client
 }
 
-// Check interface satisfied
-var _ fusefs.FS = (*FS)(nil)
+var _ = (fs.NodeOnAdder)((*s3Root)(nil))
 
-// NewFS makes a new FS
-func NewFS(VFS *vfs.VFS, opt *mountlib.Options) *FS {
-	fsys := &FS{
-		VFS: VFS,
-		f:   VFS.Fs(),
-		opt: opt,
+func (sr *s3Root) OnAdd(ctx context.Context) {
+	for _, f := range sr.cli {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		dir, base := filepath.Split(filepath.Clean(f.Name))
+
+		p := &sr.Inode
+		for _, component := range strings.Split(dir, "/") {
+			if len(component) == 0 {
+				continue
+			}
+			ch := p.GetChild(component)
+			if ch == nil {
+				ch = p.NewPersistentInode(ctx, &fs.Inode{},
+					fs.StableAttr{Mode: fuse.S_IFDIR})
+				p.AddChild(component, ch, true)
+			}
+
+			p = ch
+		}
+		ch := p.NewPersistentInode(ctx, &s3File{file: f}, fs.StableAttr{})
+		p.AddChild(base, ch, true)
 	}
-	return fsys
 }
 
-// Root returns the root node
-func (f *FS) Root() (node fusefs.Node, err error) {
-	defer log.Trace("", "")("node=%+v, err=%v", &node, &err)
-	root, err := f.VFS.Root()
+// NewS3Tree creates a new file-system for the zip file named name.
+func NewS3Tree(name string, args string) (fs.InodeEmbedder, error) {
+	r, err := NewS3Client(args)
 	if err != nil {
-		return nil, translateError(err)
+		return nil, err
 	}
-	return &Dir{root, f}, nil
+
+	return &s3Root{s3cli: r}, nil
 }
 
-// Check interface satisfied
-var _ fusefs.FSStatfser = (*FS)(nil)
+// s3File is a file read from a zip archive.
+type s3File struct {
+	fs.Inode
+	file *zip.File
 
-// Statfs is called to obtain file system metadata.
-// It should write that data to resp.
-func (f *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) (err error) {
-	defer log.Trace("", "")("stat=%+v, err=%v", resp, &err)
-	const blockSize = 4096
-	total, _, free := f.VFS.Statfs()
-	resp.Blocks = uint64(total) / blockSize // Total data blocks in file system.
-	resp.Bfree = uint64(free) / blockSize   // Free blocks in file system.
-	resp.Bavail = resp.Bfree                // Free blocks in file system if you're not root.
-	resp.Files = 1e9                        // Total files in file system.
-	resp.Ffree = 1e9                        // Free files in file system.
-	resp.Bsize = blockSize                  // Block size
-	resp.Namelen = 255                      // Maximum file name length?
-	resp.Frsize = blockSize                 // Fragment size, smallest addressable data size in the file system.
-	mountlib.ClipBlocks(&resp.Blocks)
-	mountlib.ClipBlocks(&resp.Bfree)
-	mountlib.ClipBlocks(&resp.Bavail)
-	return nil
+	mu   sync.Mutex
+	data []byte
 }
 
-// Translate errors from mountlib
-func translateError(err error) error {
-	if err == nil {
-		return nil
+var _ = (fs.NodeOpener)((*s3File)(nil))
+var _ = (fs.NodeReader)((*s3File)(nil))
+var _ = (fs.NodeWriter)((*s3File)(nil))
+
+var _ = (fs.NodeGetattrer)((*s3File)(nil))
+
+// Open lazily unpacks zip data
+func (zf *s3File) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	zf.mu.Lock()
+	defer zf.mu.Unlock()
+	if zf.data == nil {
+		rc, err := zf.file.Open()
+		if err != nil {
+			return nil, 0, syscall.EIO
+		}
+		content, err := ioutil.ReadAll(rc)
+		if err != nil {
+			return nil, 0, syscall.EIO
+		}
+
+		zf.data = content
 	}
-	_, uErr := fserrors.Cause(err)
-	switch uErr {
-	case vfs.OK:
-		return nil
-	case vfs.ENOENT, fs.ErrorDirNotFound, fs.ErrorObjectNotFound:
-		return fuse.ENOENT
-	case vfs.EEXIST, fs.ErrorDirExists:
-		return fuse.EEXIST
-	case vfs.EPERM, fs.ErrorPermissionDenied:
-		return fuse.EPERM
-	case vfs.ECLOSED:
-		return fuse.Errno(syscall.EBADF)
-	case vfs.ENOTEMPTY:
-		return fuse.Errno(syscall.ENOTEMPTY)
-	case vfs.ESPIPE:
-		return fuse.Errno(syscall.ESPIPE)
-	case vfs.EBADF:
-		return fuse.Errno(syscall.EBADF)
-	case vfs.EROFS:
-		return fuse.Errno(syscall.EROFS)
-	case vfs.ENOSYS, fs.ErrorNotImplemented:
-		return syscall.ENOSYS
-	case vfs.EINVAL:
-		return fuse.Errno(syscall.EINVAL)
+
+	// We don't return a filehandle since we don't really need
+	// one.  The file content is immutable, so hint the kernel to
+	// cache the data.
+	return nil, fuse.FOPEN_KEEP_CACHE, 0
+}
+
+// Getattr sets the minimum, which is the size. A more full-featured
+// FS would also set timestamps and permissions.
+func (zf *s3File) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	out.Mode = uint32(zf.file.Mode()) & 07777
+	out.Nlink = 1
+	out.Mtime = uint64(zf.file.ModTime().Unix())
+	out.Atime = out.Mtime
+	out.Ctime = out.Mtime
+	out.Size = zf.file.UncompressedSize64
+	const bs = 512
+	out.Blksize = bs
+	out.Blocks = (out.Size + bs - 1) / bs
+	return 0
+}
+
+// Read simply returns the data that was already unpacked in the Open call
+func (zf *s3File) Read(ctx context.Context, f fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+	end := int(off) + len(dest)
+	if end > len(zf.data) {
+		end = len(zf.data)
 	}
-	fs.Errorf(nil, "IO error: %v", err)
-	return err
+	return fuse.ReadResultData(zf.data[off:end]), 0
+}
+
+// Write simply returns the data that was already unpacked in the Open call
+func (zf *s3File) Write(ctx context.Context, f fs.FileHandle, data []byte, off int64) (written uint32, errno syscall.Errno) {
+	end := int(off) + len(data)
+	if end > len(zf.data) {
+		end = len(zf.data)
+	}
+	return fuse.Write(zf.data[off:end]), 0
+}
+
+func NewArchiveFileSystem(name string) (root fs.InodeEmbedder, err error) {
+
+	root, err = NewS3Tree(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return root, nil
 }

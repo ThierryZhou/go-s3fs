@@ -10,8 +10,10 @@ import (
 
 	"github.com/ThierryZhou/go-s3fs/fs"
 	"github.com/ThierryZhou/go-s3fs/fs/asyncreader"
+	"github.com/ThierryZhou/go-s3fs/fs/chunkedreader"
 	"github.com/ThierryZhou/go-s3fs/fs/fserrors"
 	"github.com/ThierryZhou/go-s3fs/lib/ranges"
+	"github.com/ThierryZhou/go-s3fs/s3"
 	"github.com/ThierryZhou/go-s3fs/vfs/vfscommon"
 )
 
@@ -55,6 +57,7 @@ type Item interface {
 // Downloaders is a number of downloader~s and a queue of waiters
 // waiting for segments to be downloaded to a file.
 type Downloaders struct {
+
 	// Write once - no locking required
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -81,6 +84,10 @@ type waiter struct {
 
 // downloader represents a running download for part of a file.
 type downloader struct {
+
+	// s3 filesystem node
+	snode *s3.S3Node
+
 	// Write once
 	dls  *Downloaders   // parent structure
 	quit chan struct{}  // close to quit the downloader
@@ -503,7 +510,7 @@ loop:
 	// StopBuffering has no effect if the Account wasn't buffered
 	// so we need to stop manually now rather than wait for the
 	// AsyncReader to stop.
-	if dl.stop && !dl.in.HasBuffer() {
+	if dl.stop && !dl.snode.HasBuffer() {
 		err = asyncreader.ErrorStreamAbandoned
 	}
 	return n, err
@@ -516,27 +523,20 @@ func (dl *downloader) open(offset int64) (err error) {
 	// // defer log.Trace(dl.dls.src, "offset=%d", offset)("err=%v", &err)
 	// dl.tr = accounting.Stats(dl.dls.ctx).NewTransfer(dl.dls.src)
 
-	// size := dl.dls.src.Size()
-	// if size < 0 {
-	// 	// FIXME should just completely download these
-	// 	return errors.New("can't open unknown sized file")
-	// }
+	size := dl.dls.src.Size()
+	if size < 0 {
+		// FIXME should just completely download these
+		return errors.New("can't open unknown sized file")
+	}
 
-	// // FIXME hashType needs to ignore when --no-checksum is set too? Which is a VFS flag.
-	// // var rangeOption *fs.RangeOption
-	// // if offset > 0 {
-	// // 	rangeOption = &fs.RangeOption{Start: offset, End: size - 1}
-	// // }
-	// // in0, err := operations.NewReOpen(dl.dls.ctx, dl.dls.src, ci.LowLevelRetries, dl.dls.item.c.hashOption, rangeOption)
-
-	// in0 := chunkedreader.New(context.TODO(), dl.dls.src, int64(dl.dls.opt.ChunkSize), int64(dl.dls.opt.ChunkSizeLimit))
-	// _, err = in0.Seek(offset, 0)
-	// if err != nil {
-	// 	return fmt.Errorf("vfs reader: failed to open source file: %w", err)
-	// }
+	in0 := chunkedreader.New(context.TODO(), dl.dls.src, int64(dl.dls.opt.ChunkSize), int64(dl.dls.opt.ChunkSizeLimit))
+	_, err = in0.Seek(offset, 0)
+	if err != nil {
+		return fmt.Errorf("vfs reader: failed to open source file: %w", err)
+	}
 	// dl.in = dl.tr.Account(dl.dls.ctx, in0).WithBuffer() // account and buffer the transfer
 
-	// dl.offset = offset
+	dl.offset = offset
 
 	// FIXME set mod time
 	// FIXME check checksums
@@ -554,13 +554,9 @@ func (dl *downloader) close(inErr error) (err error) {
 		err = e
 	}
 	dl.mu.Lock()
-	if dl.in != nil {
-		checkErr(dl.in.Close())
-		dl.in = nil
-	}
-	if dl.tr != nil {
-		dl.tr.Done(dl.dls.ctx, inErr)
-		dl.tr = nil
+	if dl.snode != nil {
+		checkErr(dl.snode.Close())
+		dl.snode = nil
 	}
 	dl._closed = true
 	dl.mu.Unlock()
@@ -593,8 +589,8 @@ func (dl *downloader) _stop() {
 	// any more input. This causes all the stuff in the async
 	// buffer (which can be many MiB) to be written to the disk
 	// before exiting.
-	if dl.in != nil {
-		dl.in.StopBuffering()
+	if dl.snode != nil {
+		dl.snode.StopBuffering()
 	}
 }
 
@@ -614,7 +610,7 @@ func (dl *downloader) stopAndClose(inErr error) (err error) {
 // Start downloading to the local file starting at offset until maxOffset.
 func (dl *downloader) download() (n int64, err error) {
 	// defer log.Trace(dl.dls.src, "")("err=%v", &err)
-	n, err = dl.in.WriteTo(dl)
+	n, err = dl.snode.WriteTo(dl)
 	if err != nil && !errors.Is(err, asyncreader.ErrorStreamAbandoned) {
 		return n, fmt.Errorf("vfs reader: failed to write to cache file: %w", err)
 	}
@@ -631,7 +627,7 @@ func (dl *downloader) setRange(r ranges.Range) {
 		dl.maxOffset = maxOffset
 	}
 	dl.mu.Unlock()
-	// fs.Debugf(dl.dls.src, "kicking downloader with maxOffset %d", maxOffset)
+	fs.Debugf(dl.dls.src, "kicking downloader with maxOffset %d", maxOffset)
 	select {
 	case dl.kick <- struct{}{}:
 	default:

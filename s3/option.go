@@ -1,4 +1,10 @@
-package s3fs
+// Copyright 2022 the go-s3fs Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// recently only refer read/write priviledges
+
+package s3
 
 import (
 	"strings"

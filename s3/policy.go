@@ -4,7 +4,7 @@
 
 // recently only refer read/write priviledges
 
-package s3fs
+package s3
 
 import (
 	"context"
@@ -281,7 +281,7 @@ func (c *s3Client) PutBucketPolicy(ctx context.Context, bucket, policy string) e
 }
 
 func (c *s3Client) DeleteBucketPolicy(ctx context.Context, bucket string) error {
-	_, err := c.adminClient.DeleteBucketPolicy(ctx, &s3v2.DeleteBucketPolicyInput{
+	_, err := c.client.DeleteBucketPolicy(ctx, &s3v2.DeleteBucketPolicyInput{
 		Bucket: aws.String(bucket),
 	})
 	if err != nil {
@@ -305,7 +305,7 @@ func (c *s3Client) DeleteBucketPolicy(ctx context.Context, bucket string) error 
 
 func (c *s3Client) GetBucketPolicy(ctx context.Context, bucket string) (string, error) {
 
-	p, err := c.adminClient.GetBucketPolicy(ctx, &s3v2.GetBucketPolicyInput{
+	p, err := c.client.GetBucketPolicy(ctx, &s3v2.GetBucketPolicyInput{
 		Bucket: aws.String(bucket),
 	})
 

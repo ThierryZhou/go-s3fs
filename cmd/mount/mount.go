@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ThierryZhou/go-s3fs/cmd"
 	"github.com/ThierryZhou/go-s3fs/fs"
-	"github.com/ThierryZhou/go-s3fs/fs/config"
 	"github.com/ThierryZhou/go-s3fs/fs/config/flags"
 	"github.com/ThierryZhou/go-s3fs/lib/daemonize"
 	"github.com/ThierryZhou/go-s3fs/vfs"
@@ -32,6 +32,7 @@ type Options struct {
 	AllowOther         bool
 	DefaultPermissions bool
 	Daemon             bool
+	WritebackCache     bool
 	DaemonWait         time.Duration // time to wait for ready mount from daemon, maximum on Linux or constant on macOS/BSD
 	MaxReadAhead       fs.SizeSuffix
 	ExtraOptions       []string
@@ -119,7 +120,6 @@ var Opt Options
 
 // AddFlags adds the non filing system specific flags to the command
 func AddFlags(flagSet *pflag.FlagSet) {
-	rc.AddOption("mount", &Opt)
 	flags.BoolVarP(flagSet, &Opt.DebugFUSE, "debug-fuse", "", Opt.DebugFUSE, "Debug the FUSE internals - needs -v")
 	flags.DurationVarP(flagSet, &Opt.AttrTimeout, "attr-timeout", "", Opt.AttrTimeout, "Time for which file/directory attributes are cached")
 	flags.StringArrayVarP(flagSet, &Opt.ExtraOptions, "option", "o", []string{}, "Option for libfuse/WinFsp (repeat if required)")
@@ -135,14 +135,6 @@ func AddFlags(flagSet *pflag.FlagSet) {
 	flags.FVarP(flagSet, &Opt.MaxReadAhead, "max-read-ahead", "", "The number of bytes that can be prefetched for sequential reads (not supported on Windows)")
 	flags.BoolVarP(flagSet, &Opt.WritebackCache, "write-back-cache", "", Opt.WritebackCache, "Makes kernel buffer writes before sending them to s3fs (without this, writethrough caching is used) (not supported on Windows)")
 	flags.StringVarP(flagSet, &Opt.DeviceName, "devname", "", Opt.DeviceName, "Set the device name - default is remote:path")
-	// Windows and OSX
-	flags.StringVarP(flagSet, &Opt.VolumeName, "volname", "", Opt.VolumeName, "Set the volume name (supported on Windows and OSX only)")
-	// OSX only
-	flags.BoolVarP(flagSet, &Opt.NoAppleDouble, "noappledouble", "", Opt.NoAppleDouble, "Ignore Apple Double (._) and .DS_Store files (supported on OSX only)")
-	flags.BoolVarP(flagSet, &Opt.NoAppleXattr, "noapplexattr", "", Opt.NoAppleXattr, "Ignore all \"com.apple.*\" extended attributes (supported on OSX only)")
-	// Windows only
-	flags.BoolVarP(flagSet, &Opt.NetworkMode, "network-mode", "", Opt.NetworkMode, "Mount as remote network drive, instead of fixed disk drive (supported on Windows only)")
-	// Unix only
 	flags.DurationVarP(flagSet, &Opt.DaemonWait, "daemon-wait", "", Opt.DaemonWait, "Time to wait for ready mount from daemon (maximum time on Linux, constant sleep time on OSX/BSD) (not supported on Windows)")
 }
 
@@ -160,19 +152,10 @@ func NewMountCommand(commandName string, hidden bool, mount MountFn) *cobra.Comm
 				fs.Logf(nil, "--fast-list does nothing on a mount")
 			}
 
-			if Opt.Daemon {
-				config.PassConfigKeyForDaemonization = true
-			}
-
 			if os.Getenv("PATH") == "" && runtime.GOOS != "windows" {
 				// PATH can be unset when running under Autofs or Systemd mount
 				fs.Debugf(nil, "Using fallback PATH to run fusermount")
 				_ = os.Setenv("PATH", "/bin:/usr/bin")
-			}
-
-			// Show stats if the user has specifically requested them
-			if cmd.ShowStats() {
-				defer cmd.StartStats()()
 			}
 
 			mnt := NewMountPoint(mount, args[1], cmd.NewFsDir(args), &Opt, &vfsflags.Opt)

@@ -1,4 +1,8 @@
-package s3fs
+// Copyright 2022 the go-s3fs Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package s3
 
 import (
 	"bytes"
@@ -9,20 +13,12 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
-	"text/template"
 	"time"
 
-	"github.com/golang/groupcache/lru"
 	log "github.com/sirupsen/logrus"
-
-	appconf "registry.code.tuya-inc.top/TuyaAiPlatform/dataset-server/pkg/config"
-	"registry.code.tuya-inc.top/TuyaAiPlatform/dataset-server/pkg/storage"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
@@ -36,15 +32,15 @@ import (
 )
 
 const (
+	MAX_GOROUTES           = 32
 	defaultShareLinkExpiry = time.Hour * 24 * 7 // 7 days
 	defaultCacheSize       = 500000
 )
 
 type s3Client struct {
-	client       *s3v2.Client
-	downloader   *manager.Downloader
-	uploader     *manager.Uploader
-	presignCache *lru.Cache
+	client     *s3v2.Client
+	downloader *manager.Downloader
+	uploader   *manager.Uploader
 }
 
 type NoOpRateLimit struct{}
@@ -79,7 +75,7 @@ func (j *ExponentialJitterBackoff) BackoffDelay(attempt int, err error) (time.Du
 	return retryTime, nil
 }
 
-func NewS3Client(args string) (storage.Client, error) {
+func NewS3Client(args string) (*s3Client, error) {
 	// u, err := url.Parse(o.URL)
 	// if err != nil {
 	// 	log.Printf("url.Parse(%s): err = %#v", o.URL, err)
@@ -120,21 +116,14 @@ func NewS3Client(args string) (storage.Client, error) {
 		o.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(access_key, secret_key, ""))
 	})
 
-	psClient := s3v2.NewPresignClient(client)
-
 	downloader := manager.NewDownloader(client)
 
 	uploader := manager.NewUploader(client)
 
-	presignCache := lru.New(defaultCacheSize)
-
 	return &s3Client{
-		client:       client,
-		psClient:     psClient,
-		downloader:   downloader,
-		uploader:     uploader,
-		o:            o,
-		presignCache: presignCache,
+		client:     client,
+		downloader: downloader,
+		uploader:   uploader,
 	}, nil
 }
 
@@ -241,13 +230,13 @@ func (c *s3Client) HeadBucket(ctx context.Context, bucket string) (bool, error) 
 	return true, nil
 }
 
-func (c *s3Client) CreateBucket(ctx context.Context, user, name string) (*storage.Bucket, error) {
+func (c *s3Client) CreateBucket(ctx context.Context, user, name string) (*Bucket, error) {
 
 	// check bucket exists
 	if c.validateBucket(ctx, name) == -1 {
-		return nil, storage.ErrInvalidBucketName
+		return nil, ErrInvalidBucketName
 	} else if c.validateBucket(ctx, name) == 1 {
-		return nil, storage.ErrBucketExisted
+		return nil, ErrBucketExisted
 	}
 
 	// create it if not exists
@@ -270,7 +259,7 @@ func (c *s3Client) CreateBucket(ctx context.Context, user, name string) (*storag
 		return nil, err
 	}
 
-	return &storage.Bucket{
+	return &Bucket{
 		Name: name,
 	}, nil
 
@@ -279,7 +268,7 @@ func (c *s3Client) CreateBucket(ctx context.Context, user, name string) (*storag
 func (c *s3Client) DeleteBucket(ctx context.Context, user, name string) error {
 	// check bucket name
 	if c.validateBucket(ctx, name) != 1 {
-		return storage.ErrInvalidBucketName
+		return ErrInvalidBucketName
 	}
 
 	// // delete bucket's shares
@@ -315,7 +304,7 @@ func (c *s3Client) DeleteBucket(ctx context.Context, user, name string) error {
 		}
 
 		var wg sync.WaitGroup
-		cos := make(chan error, appconf.MAX_GOROUTES)
+		cos := make(chan error, MAX_GOROUTES)
 		for _, item := range out.Contents {
 			wg.Add(1)
 
@@ -369,157 +358,10 @@ func (c *s3Client) DeleteBucket(ctx context.Context, user, name string) error {
 	return nil
 }
 
-func (c *s3Client) listBucketShares(ctx context.Context, name string) ([]*storage.Share, error) {
-	// apolicies, err := c.adminClient.ListCannedPolicies(ctx)
-	// if err != nil {
-	// 	log.Printf("madmin.ListCannedPolicies(): err = %#v", err)
-	// 	return nil, err
-	// }
-
-	shares := []*storage.Share{}
-	// for k, v := range apolicies {
-	// 	if strings.HasSuffix(k, c.o.UserIDSuffix) {
-	// 		// upolicy, _ := newBucketPolicyFromPolicy(v)
-	// 		// if upolicy.findReadOnlyBucket(name) {
-	// 		// 	shares = append(shares, &storage.Share{
-	// 		// 		User: k,
-	// 		// 	})
-	// 		// }
-	// 	}
-	// }
-
-	return shares, nil
-}
-
-func (c *s3Client) CreateShare(ctx context.Context, user, name, targetUser string) error {
-
-	// check bucket name
-	if c.validateBucket(ctx, name) != 1 {
-		return storage.ErrInvalidBucketName
-	}
-
-	// check owner
-	{
-		if !c.validateUser(ctx, user) {
-			return storage.ErrInvalidParams
-		}
-
-		// get owner's policy
-
-		// check owner privilege
-
-		// valid owneer's policy
-	}
-
-	// check touser
-	{
-		if !c.validateUser(ctx, targetUser) {
-			return storage.ErrInvalidParams
-		}
-
-		// get touser's policy
-	}
-
-	return nil
-}
-
-func (c *s3Client) DeleteShare(ctx context.Context, user, name, targetUser string) error {
-	if !c.validateUser(ctx, user) {
-		return storage.ErrInvalidParams
-	}
-
-	if !c.validateUser(ctx, targetUser) {
-		return storage.ErrInvalidParams
-	}
-
-	if c.validateBucket(ctx, name) != 1 {
-		return storage.ErrInvalidBucketName
-	}
-
-	return nil
-}
-
-func (c *s3Client) Account(ctx context.Context, user, token string) (*storage.Account, error) {
-	if !c.validateUser(ctx, user) {
-		return nil, storage.ErrInvalidParams
-	}
-
-	u, err := url.Parse(c.o.ExternalURL)
-	if err != nil {
-		log.Printf("url.Parse(%s): err = %#v", c.o.ExternalURL, err)
-		return nil, storage.ErrInvalidParams
-	}
-	minioURL := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
-
-	return &storage.Account{
-		URL:      minioURL,
-		User:     user,
-		Password: c.userDefaultSecret(user),
-		Description: fmt.Sprintf("mc alias set myminio %s %s %s; mc ls myminio",
-			minioURL,
-			user,
-			c.userDefaultSecret(user),
-		),
-	}, nil
-}
-
-const (
-	loginS3Html = `
-<html>
-<head></head>
-<body>
-<script>window.localStorage.setItem('token','%s')</script>
-<script>window.location.href='%s'</script>
-</body>
-</html>
-`
-)
-
-func (c *s3Client) Redirect(ctx context.Context, user, token, dir string, w http.ResponseWriter) error {
-	if !c.validateUser(ctx, user) {
-		http.Error(w, storage.ErrInvalidParams.Error(), http.StatusBadRequest)
-		return nil
-	}
-
-	log.Printf("==> user = %s, token = %s, dir = %s", user, token, dir)
-
-	return nil
-}
-
-func (c *s3Client) Volume(ctx context.Context, userID, bucketPath, customPath string) (string, error) {
-	if !c.validateUser(ctx, userID) {
-		return "", storage.ErrInvalidParams
-	}
-
-	tpl, err := template.ParseFiles(c.o.VolumeTemplate)
-	if err != nil {
-		log.Printf("ParseFiles(%s): err = %#v", c.o.VolumeTemplate, err)
-		return "", err
-	}
-
-	bucketName := strings.Split(bucketPath, "/")[0]
-	readOnly := "true"
-
-	log.Printf("bucketPath(%s), customPath(%s) -> bucketName(%s): readOnly = %s",
-		bucketPath, customPath, bucketName, readOnly)
-
-	var buf bytes.Buffer
-
-	data := map[string]string{
-		"Path":     bucketPath, // path.Join(bucketPath, customPath),
-		"ReadOnly": readOnly,
-	}
-	if err := tpl.Execute(&buf, data); err != nil {
-		return "", err
-	}
-
-	return buf.String(), nil
-}
-
-func (c *s3Client) PutFile(ctx context.Context, userID, bucket, path, file string) (*storage.Object, error) {
+func (c *s3Client) PutFile(ctx context.Context, userID, bucket, path, file string) (*Object, error) {
 	// check bucket exists
 	if c.validateBucket(ctx, bucket) != 1 {
-		return nil, storage.ErrInvalidBucketName
+		return nil, ErrInvalidBucketName
 	}
 
 	f, err := os.Open(file)
@@ -559,25 +401,17 @@ func (c *s3Client) PutFile(ctx context.Context, userID, bucket, path, file strin
 		return nil, err
 	}
 
-	return &storage.Object{
-		Bucket:   bucket,
-		FileName: file_name,
-		Dir:      dir,
+	return &Object{
+		Bucket: bucket,
+		Name:   file_name,
+		Prefix: dir,
 	}, nil
 }
 
-func (c *s3Client) ShareObject(ctx context.Context, userID, name, objectPath, expiry string) (*storage.ShareLink, error) {
-	if !c.validateUser(ctx, userID) {
-		return nil, storage.ErrInvalidParams
-	}
-
-	return nil, nil
-}
-
-func (c *s3Client) PutObject(ctx context.Context, userID, bucket, path string, data []byte) (*storage.Object, error) {
+func (c *s3Client) PutObject(ctx context.Context, userID, bucket, path string, data []byte) (*Object, error) {
 	// check bucket exists
 	if c.validateBucket(ctx, bucket) != 1 {
-		return nil, storage.ErrInvalidBucketName
+		return nil, ErrInvalidBucketName
 	}
 
 	// analyze file path
@@ -610,18 +444,17 @@ func (c *s3Client) PutObject(ctx context.Context, userID, bucket, path string, d
 		return nil, err
 	}
 
-	return &storage.Object{
-		Bucket:   bucket,
-		FileName: file_name,
-		Dir:      dir,
-		Data:     data,
+	return &Object{
+		Bucket: bucket,
+		Name:   file_name,
+		Prefix: dir,
 	}, nil
 }
 
-func (c *s3Client) GetObject(ctx context.Context, userID, bucket, path string) (*storage.Object, error) {
+func (c *s3Client) GetObject(ctx context.Context, userID, bucket, path string) (*Object, error) {
 	// check bucket exists
 	if c.validateBucket(ctx, bucket) != 1 {
-		return nil, storage.ErrInvalidBucketName
+		return nil, ErrInvalidBucketName
 	}
 
 	cpath := filepath.Clean(fmt.Sprintf("./%s", path))
@@ -651,11 +484,10 @@ func (c *s3Client) GetObject(ctx context.Context, userID, bucket, path string) (
 			log.Warnf("Get Object(%s) From Bucket(%s) with AWS S3 Error: %s", path, bucket, nsb.Message)
 		case errors.As(err, &nsk):
 			log.Warnf("Get Object(%s) From Bucket(%s) with AWS S3 Error: %s", path, bucket, nsk.Message)
-			return &storage.Object{
-				Bucket:   bucket,
-				FileName: file_name,
-				Dir:      dir,
-				Data:     []byte("{}"),
+			return &Object{
+				Bucket: bucket,
+				Name:   file_name,
+				Prefix: dir,
 			}, nil
 		default:
 			var apiErr smithy.APIError
@@ -671,18 +503,17 @@ func (c *s3Client) GetObject(ctx context.Context, userID, bucket, path string) (
 		return nil, fmt.Errorf("Unknown Error In Ceph RGW")
 	}
 
-	return &storage.Object{
-		Bucket:   bucket,
-		FileName: file_name,
-		Dir:      dir,
-		Data:     data,
+	return &Object{
+		Bucket: bucket,
+		Name:   file_name,
+		Prefix: dir,
 	}, nil
 }
 
 func (c *s3Client) DeleteObject(ctx context.Context, user, bucket, path string) error {
 	// check bucket exists
 	if c.validateBucket(ctx, bucket) != 1 {
-		return storage.ErrInvalidBucketName
+		return ErrInvalidBucketName
 	}
 
 	// clean root path to relative path
@@ -716,10 +547,10 @@ func (c *s3Client) DeleteObject(ctx context.Context, user, bucket, path string) 
 	return nil
 }
 
-func (c *s3Client) ListObject(ctx context.Context, userID, bucket, path string) ([]storage.Object, error) {
+func (c *s3Client) ListObject(ctx context.Context, userID, bucket, path string) ([]Object, error) {
 	// check bucket exists
 	if c.validateBucket(ctx, bucket) != 1 {
-		return nil, storage.ErrInvalidBucketName
+		return nil, ErrInvalidBucketName
 	}
 
 	// clean root path to relative path
@@ -750,7 +581,7 @@ func (c *s3Client) ListObject(ctx context.Context, userID, bucket, path string) 
 		return nil, err
 	}
 
-	var list []storage.Object
+	var list []Object
 
 	return list, nil
 }
@@ -791,10 +622,10 @@ func (c *s3Client) HeadObject(ctx context.Context, userID, bucket, path string) 
 	return gotOutput.ContentLength, nil
 }
 
-func (c *s3Client) UploadObject(ctx context.Context, userID, bucket, path string, file io.Reader) (*storage.Object, error) {
+func (c *s3Client) UploadObject(ctx context.Context, userID, bucket, path string, file io.Reader) (*Object, error) {
 	// check bucket exists
 	if c.validateBucket(ctx, bucket) != 1 {
-		return nil, storage.ErrInvalidBucketName
+		return nil, ErrInvalidBucketName
 	}
 
 	// analyze file path
@@ -834,55 +665,8 @@ func (c *s3Client) UploadObject(ctx context.Context, userID, bucket, path string
 		return nil, err
 	}
 
-	return &storage.Object{
-		Bucket:   bucket,
-		FileName: file_name,
-		Dir:      dir,
+	return &Object{
+		Name:   file_name,
+		Prefix: dir,
 	}, nil
-}
-
-func (c *s3Client) PresignObject(ctx context.Context, userID, bucket, path string) (string, error) {
-	// check bucket exists
-	if c.validateBucket(ctx, bucket) != 1 {
-		return "", storage.ErrInvalidBucketName
-	}
-
-	// clean root path to relative path
-	cpath := filepath.Clean(fmt.Sprintf("./%s", path))
-
-	var downloadUrl string
-	// key := fmt.Sprintf("%s/%s", bucket, cpath)
-	// data, ok := c.presignCache.Get(key)
-	// if !ok {
-
-	// create it if not exists
-	input := &s3v2.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(cpath),
-	}
-
-	resp, err := c.psClient.PresignGetObject(ctx, input)
-	if err != nil {
-		var nsb *types.NoSuchBucket
-		var nsk *types.NoSuchKey
-		switch {
-		case errors.As(err, &nsb):
-			log.Warnf("Presign Object(%s) in Bucket(%s) with AWS S3 Error: %s", bucket, path, *nsb.Message)
-		case errors.As(err, &nsb):
-			log.Warnf("Presign Object(%s) in Bucket(%s) with AWS S3 Error: %s", path, bucket, nsk.Message)
-		default:
-			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) {
-				log.Warnf("Presign Object(%s) in Bucket(%s) with Unknown Error:%s", path, bucket, apiErr.ErrorMessage())
-			}
-		}
-
-		return "", err
-	}
-	downloadUrl = resp.URL
-	// } else {
-	// 	downloadUrl = data.(string)
-	// }
-
-	return downloadUrl, nil
 }
