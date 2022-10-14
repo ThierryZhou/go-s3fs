@@ -28,7 +28,7 @@ Further highlights of this library is
 
 ## Credits
 
-* Inspired by hanwen's package https://github.com/hanwen/go-fuse
+* Inspired by rclone and fuse, https://github.com/bazil/fuse https://github.com/rclone/rclone
 
 * Inspired by Taru Karttunen's package, https://bitbucket.org/taruti/go-extra.
 
