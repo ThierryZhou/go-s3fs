@@ -184,15 +184,15 @@ func NewMountCommand(commandName string, hidden bool, mount MountFn) *cobra.Comm
 				})
 			}
 
-			if err == nil && Opt.DaemonWait > 0 {
-				err = WaitMountReady(mnt.MountPoint, Opt.DaemonWait)
-				if err != nil {
-					killDaemon("Daemon timed out")
-				}
-			}
-			if err != nil {
-				log.Fatalf("Fatal error: %v", err)
-			}
+			// if err == nil && Opt.DaemonWait > 0 {
+			// 	err = WaitMountReady(mnt.MountPoint, Opt.DaemonWait)
+			// 	if err != nil {
+			// 		killDaemon("Daemon timed out")
+			// 	}
+			// }
+			// if err != nil {
+			// 	log.Fatalf("Fatal error: %v", err)
+			// }
 		},
 	}
 

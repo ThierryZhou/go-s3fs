@@ -53,7 +53,7 @@ func IsMountHelper() bool {
 		return false
 	}
 	me := filepath.Base(os.Args[0])
-	return me == "mount.rclone" || me == "rclonefs"
+	return me == "s3fs"
 }
 
 // convertMountHelperArgs converts "-o" styled mount helper arguments

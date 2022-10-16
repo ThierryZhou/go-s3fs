@@ -13,12 +13,14 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"strings"
 
 	"github.com/ThierryZhou/go-s3fs/fs"
+	"github.com/ThierryZhou/go-s3fs/fs/cache"
 	"github.com/ThierryZhou/go-s3fs/fs/config/flags"
 	"github.com/ThierryZhou/go-s3fs/fs/filter"
 	"github.com/ThierryZhou/go-s3fs/fs/fspath"
@@ -66,23 +68,23 @@ func ShowVersion() {
 // It returns a string with the file name if points to a file
 // otherwise "".
 func NewFsFile(remote string) (fs.Fs, string) {
-	// _, fsPath, err := fspath.SplitFs(remote)
-	// if err != nil {
-	// 	err = fs.CountError(err)
-	// 	log.Fatalf("Failed to create file system for %q: %v", remote, err)
-	// }
-	// f, err := cache.Get(context.Background(), remote)
-	// switch err {
-	// case fs.ErrorIsFile:
-	// 	cache.Pin(f) // pin indefinitely since it was on the CLI
-	// 	return f, path.Base(fsPath)
-	// case nil:
-	// 	cache.Pin(f) // pin indefinitely since it was on the CLI
-	// 	return f, ""
-	// default:
-	// 	err = fs.CountError(err)
-	// 	log.Fatalf("Failed to create file system for %q: %v", remote, err)
-	// }
+	_, fsPath, err := fspath.SplitFs(remote)
+	if err != nil {
+		err = fs.CountError(err)
+		log.Fatalf("Failed to create file system for %q: %v", remote, err)
+	}
+	f, err := cache.Get(context.Background(), remote)
+	switch err {
+	case fs.ErrorIsFile:
+		cache.Pin(f) // pin indefinitely since it was on the CLI
+		return f, path.Base(fsPath)
+	case nil:
+		cache.Pin(f) // pin indefinitely since it was on the CLI
+		return f, ""
+	default:
+		err = fs.CountError(err)
+		log.Fatalf("Failed to create file system for %q: %v", remote, err)
+	}
 	return nil, ""
 }
 

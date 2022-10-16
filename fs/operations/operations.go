@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"mime"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -28,7 +26,6 @@ import (
 	"github.com/ThierryZhou/go-s3fs/fs/config"
 	"github.com/ThierryZhou/go-s3fs/fs/filter"
 	"github.com/ThierryZhou/go-s3fs/fs/fserrors"
-	"github.com/ThierryZhou/go-s3fs/fs/fshttp"
 	"github.com/ThierryZhou/go-s3fs/fs/hash"
 	"github.com/ThierryZhou/go-s3fs/fs/walk"
 	"golang.org/x/sync/errgroup"
@@ -1605,63 +1602,63 @@ func RcatSize(ctx context.Context, fdst fs.Fs, dstFileName string, in io.ReadClo
 type copyURLFunc func(ctx context.Context, dstFileName string, in io.ReadCloser, size int64, modTime time.Time) (err error)
 
 // copyURLFn copies the data from the url to the function supplied
-func copyURLFn(ctx context.Context, dstFileName string, url string, autoFilename, dstFileNameFromHeader bool, fn copyURLFunc) (err error) {
-	client := fshttp.NewClient(ctx)
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer fs.CheckClose(resp.Body, &err)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("CopyURL failed: %s", resp.Status)
-	}
-	modTime, err := http.ParseTime(resp.Header.Get("Last-Modified"))
-	if err != nil {
-		modTime = time.Now()
-	}
-	if autoFilename {
-		if dstFileNameFromHeader {
-			_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition"))
-			headerFilename := path.Base(strings.Replace(params["filename"], "\\", "/", -1))
-			if err != nil || headerFilename == "" {
-				return fmt.Errorf("CopyURL failed: filename not found in the Content-Disposition header")
-			}
-			fs.Debugf(headerFilename, "filename found in Content-Disposition header.")
-			return fn(ctx, headerFilename, resp.Body, resp.ContentLength, modTime)
-		}
+// func copyURLFn(ctx context.Context, dstFileName string, url string, autoFilename, dstFileNameFromHeader bool, fn copyURLFunc) (err error) {
+// 	client := fshttp.NewClient(ctx)
+// 	resp, err := client.Get(url)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer fs.CheckClose(resp.Body, &err)
+// 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+// 		return fmt.Errorf("CopyURL failed: %s", resp.Status)
+// 	}
+// 	modTime, err := http.ParseTime(resp.Header.Get("Last-Modified"))
+// 	if err != nil {
+// 		modTime = time.Now()
+// 	}
+// 	if autoFilename {
+// 		if dstFileNameFromHeader {
+// 			_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition"))
+// 			headerFilename := path.Base(strings.Replace(params["filename"], "\\", "/", -1))
+// 			if err != nil || headerFilename == "" {
+// 				return fmt.Errorf("CopyURL failed: filename not found in the Content-Disposition header")
+// 			}
+// 			fs.Debugf(headerFilename, "filename found in Content-Disposition header.")
+// 			return fn(ctx, headerFilename, resp.Body, resp.ContentLength, modTime)
+// 		}
 
-		dstFileName = path.Base(resp.Request.URL.Path)
-		if dstFileName == "." || dstFileName == "/" {
-			return fmt.Errorf("CopyURL failed: file name wasn't found in url")
-		}
-		fs.Debugf(dstFileName, "File name found in url")
-	}
-	return fn(ctx, dstFileName, resp.Body, resp.ContentLength, modTime)
-}
+// 		dstFileName = path.Base(resp.Request.URL.Path)
+// 		if dstFileName == "." || dstFileName == "/" {
+// 			return fmt.Errorf("CopyURL failed: file name wasn't found in url")
+// 		}
+// 		fs.Debugf(dstFileName, "File name found in url")
+// 	}
+// 	return fn(ctx, dstFileName, resp.Body, resp.ContentLength, modTime)
+// }
 
 // CopyURL copies the data from the url to (fdst, dstFileName)
-func CopyURL(ctx context.Context, fdst fs.Fs, dstFileName string, url string, autoFilename, dstFileNameFromHeader bool, noClobber bool) (dst fs.Object, err error) {
+// func CopyURL(ctx context.Context, fdst fs.Fs, dstFileName string, url string, autoFilename, dstFileNameFromHeader bool, noClobber bool) (dst fs.Object, err error) {
 
-	err = copyURLFn(ctx, dstFileName, url, autoFilename, dstFileNameFromHeader, func(ctx context.Context, dstFileName string, in io.ReadCloser, size int64, modTime time.Time) (err error) {
-		if noClobber {
-			_, err = fdst.NewObject(ctx, dstFileName)
-			if err == nil {
-				return errors.New("CopyURL failed: file already exist")
-			}
-		}
-		dst, err = RcatSize(ctx, fdst, dstFileName, in, size, modTime)
-		return err
-	})
-	return dst, err
-}
+// 	err = copyURLFn(ctx, dstFileName, url, autoFilename, dstFileNameFromHeader, func(ctx context.Context, dstFileName string, in io.ReadCloser, size int64, modTime time.Time) (err error) {
+// 		if noClobber {
+// 			_, err = fdst.NewObject(ctx, dstFileName)
+// 			if err == nil {
+// 				return errors.New("CopyURL failed: file already exist")
+// 			}
+// 		}
+// 		dst, err = RcatSize(ctx, fdst, dstFileName, in, size, modTime)
+// 		return err
+// 	})
+// 	return dst, err
+// }
 
 // CopyURLToWriter copies the data from the url to the io.Writer supplied
-func CopyURLToWriter(ctx context.Context, url string, out io.Writer) (err error) {
-	return copyURLFn(ctx, "", url, false, false, func(ctx context.Context, dstFileName string, in io.ReadCloser, size int64, modTime time.Time) (err error) {
-		_, err = io.Copy(out, in)
-		return err
-	})
-}
+// func CopyURLToWriter(ctx context.Context, url string, out io.Writer) (err error) {
+// 	return copyURLFn(ctx, "", url, false, false, func(ctx context.Context, dstFileName string, in io.ReadCloser, size int64, modTime time.Time) (err error) {
+// 		_, err = io.Copy(out, in)
+// 		return err
+// 	})
+// }
 
 // BackupDir returns the correctly configured --backup-dir
 func BackupDir(ctx context.Context, fdst fs.Fs, fsrc fs.Fs, srcFileName string) (backupDir fs.Fs, err error) {
